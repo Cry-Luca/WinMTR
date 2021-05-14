@@ -11,3 +11,13 @@
 *.lai
 *.la
 *.a
+
+# VS project (user specific settings)
+*.vcxproj.user
+
+/build/
+/src/.vs/
+src/Release/
+src/Release_x64/
+src/Debug/
+src/Debug_x64/
