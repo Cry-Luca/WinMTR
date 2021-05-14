@@ -2,12 +2,6 @@ cmake_minimum_required(VERSION 3.12.4)
 
 project(WinMTR LANGUAGES CXX)
 
-add_compile_definitions(
-	_AFXDLL # AFX dynamic
-	_CRT_SECURE_NO_WARNINGS 
-	_WIN32_WINNT=_WIN32_WINNT_WIN7
-)
-
 add_executable(WinMTR 
 	WIN32 
 	"src/Resource.h"
@@ -31,6 +25,16 @@ add_executable(WinMTR
 	"src/WinMTRNet.h"
 	"src/WinMTROptions.h"
 	"src/WinMTRProperties.h"
+)
+
+target_compile_definitions(WinMTR PRIVATE
+	_AFXDLL # AFX dynamic
+	_CRT_SECURE_NO_WARNINGS 
+	_WIN32_WINNT=_WIN32_WINNT_WIN7
+)
+
+add_executable(WinMTR-Report
+	"src/WinMTRReport.cpp"
 )
 
 #start_sources()
