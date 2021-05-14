@@ -290,5 +290,5 @@ END
 //
 // Manifest resources
 //
-LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
-1                  RT_MANIFEST    ".\\manifest.xml"
+//LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+//1                  RT_MANIFEST    ".\\manifest.xml"
