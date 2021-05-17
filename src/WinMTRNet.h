@@ -40,6 +40,11 @@ struct s_nethost {
 	char name[255];
 };
 
+struct s_trace {
+	const char* hostname = "";
+	int			max_ping = DEFAULT_MAX_PING; // equivalent to mtr's '-c, --report-cycles COUNT' (the number of pings sent)
+};
+
 //*****************************************************************************
 // CLASS:  WinMTRNet
 //
@@ -62,7 +67,7 @@ public:
 
 	WinMTRNet();
 	~WinMTRNet();
-	void	DoTrace(const char* hostname);
+	void	DoTrace(const s_trace& trace);
 	void	ResetHops();
 	void	StopTrace();
 	

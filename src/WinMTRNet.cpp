@@ -131,7 +131,7 @@ void WinMTRNet::ResetHops()
 	memset(host,0,sizeof(host));
 }
 
-void WinMTRNet::DoTrace(const char* hostname)
+void WinMTRNet::DoTrace(const s_trace& trace)
 {
 	addrinfo nfofilter = { 0 };
 	addrinfo* anfo;
@@ -147,7 +147,7 @@ void WinMTRNet::DoTrace(const char* hostname)
 	}
 	nfofilter.ai_socktype = SOCK_RAW;
 	nfofilter.ai_flags = AI_NUMERICSERV | AI_ADDRCONFIG;//|AI_V4MAPPED;
-	if (getaddrinfo(hostname, NULL, &nfofilter, &anfo) || !anfo) { //we use first address returned
+	if (getaddrinfo(trace.hostname, NULL, &nfofilter, &anfo) || !anfo) { //we use first address returned
 		NotifyError("Unable to resolve hostname. (again)");
 		freeaddrinfo(anfo);
 		return;
@@ -167,7 +167,7 @@ void WinMTRNet::DoTrace(const char* hostname)
 			current->address=*(sockaddr_in6*)sockaddr;
 			current->winmtr=this;
 			current->ttl=hops+1;
-			current->max_ping = DEFAULT_MAX_PING;
+			current->max_ping = trace.max_ping;
 			hThreads[hops]=(HANDLE)_beginthreadex(NULL,0,TraceThread6,current,0,NULL);
 			Sleep(30);
 			if(++hops>this->GetMax()) break;
@@ -180,7 +180,7 @@ void WinMTRNet::DoTrace(const char* hostname)
 			current->address=((sockaddr_in*)sockaddr)->sin_addr;
 			current->winmtr=this;
 			current->ttl=hops+1;
-			current->max_ping = DEFAULT_MAX_PING;
+			current->max_ping = trace.max_ping;
 			hThreads[hops]=(HANDLE)_beginthreadex(NULL,0,TraceThread,current,0,NULL);
 			Sleep(30);
 			if(++hops>this->GetMax()) break;
