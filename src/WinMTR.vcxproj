@@ -261,6 +261,7 @@
     <ClCompile Include="WinMTRProperties.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="WinMTRDefs.h" />
     <ClInclude Include="WinMTRLicense.h" />
     <ClInclude Include="WinMTRStatusBar.h" />
     <ClInclude Include="Resource.h" />

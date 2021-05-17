@@ -2,22 +2,7 @@
 // FILE:            WinMTRNet.cpp
 //
 //*****************************************************************************
-#include "WinMTRGlobal.h"
 #include "WinMTRNet.h"
-#include "WinMTRDialog.h"
-#include <iostream>
-#include <sstream>
-
-#ifdef _DEBUG
-#	define TRACE_MSG(msg)										\
-	{															\
-		std::ostringstream dbg_msg(std::ostringstream::out);	\
-		dbg_msg << msg << std::endl;							\
-		OutputDebugString(dbg_msg.str().c_str());				\
-	}
-#else
-#	define TRACE_MSG(msg)
-#endif
 
 #define IPFLAG_DONT_FRAGMENT	0x02
 #define MAX_HOPS				30
@@ -26,11 +11,13 @@ struct trace_thread {
 	WinMTRNet*	winmtr;
 	in_addr		address;
 	int			ttl;
+//	int			max_ping; // equivalent to mtr's '-c, --report-cycles COUNT' (the number of pings sent)
 };
 struct trace_thread6 {
 	WinMTRNet*		winmtr;
 	sockaddr_in6	address;
 	int				ttl;
+//	int				max_ping; // equivalent to mtr's '-c, --report-cycles COUNT' (the number of pings sent)
 };
 
 struct dns_resolver_thread {
@@ -42,36 +29,39 @@ unsigned WINAPI TraceThread(void* p);
 unsigned WINAPI TraceThread6(void* p);
 void DnsResolverThread(void* p);
 
-WinMTRNet::WinMTRNet(WinMTRDialog* wp)
+WinMTRNet::WinMTRNet()
 {
+	useDNS = DEFAULT_DNS;
+	interval = DEFAULT_INTERVAL;
+	pingsize = DEFAULT_PING_SIZE;
 
 	ghMutex = CreateMutex(NULL, FALSE, NULL);
 	hasIPv6=true;
+	useIPv6 = 2;
 	tracing=false;
 	initialized = false;
-	wmtrdlg = wp;
 	WSADATA wsaData;
 	
 	if(WSAStartup(MAKEWORD(2, 2), &wsaData)) {
-		AfxMessageBox("Failed initializing windows sockets library!");
+		NotifyError("Failed initializing windows sockets library!");
 		return;
 	}
 	OSVERSIONINFOEX osvi= {0};
 	osvi.dwOSVersionInfoSize=sizeof(OSVERSIONINFOEX);
 	if(!GetVersionEx((OSVERSIONINFO*) &osvi)) {
-		AfxMessageBox("Failed to get Windows version!");
+		NotifyError("Failed to get Windows version!");
 		return;
 	}
 	if(osvi.dwMajorVersion==5 && osvi.dwMinorVersion==0) { //w2k
 		hICMP_DLL=LoadLibrary(_T("ICMP.DLL"));
 		if(!hICMP_DLL) {
-			AfxMessageBox("Failed: Unable to locate ICMP.DLL!");
+			NotifyError("Failed: Unable to locate ICMP.DLL!");
 			return;
 		}
 	} else {
 		hICMP_DLL=LoadLibrary(_T("Iphlpapi.dll"));
 		if(!hICMP_DLL) {
-			AfxMessageBox("Failed: Unable to locate Iphlpapi.dll!");
+			NotifyError("Failed: Unable to locate Iphlpapi.dll!");
 			return;
 		}
 	}
@@ -84,7 +74,7 @@ WinMTRNet::WinMTRNet(WinMTRDialog* wp)
 	lpfnIcmpCloseHandle = (LPFNICMPCLOSEHANDLE)GetProcAddress(hICMP_DLL,"IcmpCloseHandle");
 	lpfnIcmpSendEcho2   = (LPFNICMPSENDECHO2)GetProcAddress(hICMP_DLL,"IcmpSendEcho2");
 	if(!lpfnIcmpCreateFile || !lpfnIcmpCloseHandle || !lpfnIcmpSendEcho2) {
-		AfxMessageBox("Wrong ICMP system library !");
+		NotifyError("Wrong ICMP system library !");
 		return;
 	}
 	//IPv6
@@ -92,7 +82,7 @@ WinMTRNet::WinMTRNet(WinMTRDialog* wp)
 	lpfnIcmp6SendEcho2=(LPFNICMP6SENDECHO2)GetProcAddress(hICMP_DLL,"Icmp6SendEcho2");
 	if(!lpfnIcmp6CreateFile || !lpfnIcmp6SendEcho2) {
 		hasIPv6=false;
-		AfxMessageBox("IPv6 support not found!");
+		NotifyError("IPv6 support not found!");
 		return;//@todo : soft fail
 	}
 	
@@ -101,19 +91,19 @@ WinMTRNet::WinMTRNet(WinMTRDialog* wp)
 	 */
 	hICMP = (HANDLE) lpfnIcmpCreateFile();
 	if(hICMP == INVALID_HANDLE_VALUE) {
-		AfxMessageBox("Error in ICMP module!");
+		NotifyError("Error in ICMP module!");
 		return;
 	}
 	if(hasIPv6) {
 		hICMP6=(HANDLE)lpfnIcmp6CreateFile();
 		if(hICMP6==INVALID_HANDLE_VALUE) {
-			AfxMessageBox("Error in ICMPv6 module!");
+			NotifyError("Error in ICMPv6 module!");
 			return;//@todo : soft fail
 		}
 	}
 	
 	ResetHops();
-	
+
 	initialized = true;
 	return;
 }
@@ -141,8 +131,30 @@ void WinMTRNet::ResetHops()
 	memset(host,0,sizeof(host));
 }
 
-void WinMTRNet::DoTrace(sockaddr* sockaddr)
+void WinMTRNet::DoTrace(const char* hostname)
 {
+	addrinfo nfofilter = { 0 };
+	addrinfo* anfo;
+	if (hasIPv6) {
+		switch (useIPv6) {
+		case 0:
+			nfofilter.ai_family = AF_INET; break;
+		case 1:
+			nfofilter.ai_family = AF_INET6; break;
+		default:
+			nfofilter.ai_family = AF_UNSPEC;
+		}
+	}
+	nfofilter.ai_socktype = SOCK_RAW;
+	nfofilter.ai_flags = AI_NUMERICSERV | AI_ADDRCONFIG;//|AI_V4MAPPED;
+	if (getaddrinfo(hostname, NULL, &nfofilter, &anfo) || !anfo) { //we use first address returned
+		NotifyError("Unable to resolve hostname. (again)");
+		freeaddrinfo(anfo);
+		return;
+	}
+
+	sockaddr* sockaddr = anfo->ai_addr;
+
 	HANDLE hThreads[MAX_HOPS];
 	unsigned char hops=0;
 	tracing = true;
@@ -155,6 +167,7 @@ void WinMTRNet::DoTrace(sockaddr* sockaddr)
 			current->address=*(sockaddr_in6*)sockaddr;
 			current->winmtr=this;
 			current->ttl=hops+1;
+//			current->max_ping = DEFAULT_MAX_PING;
 			hThreads[hops]=(HANDLE)_beginthreadex(NULL,0,TraceThread6,current,0,NULL);
 			Sleep(30);
 			if(++hops>this->GetMax()) break;
@@ -167,6 +180,7 @@ void WinMTRNet::DoTrace(sockaddr* sockaddr)
 			current->address=((sockaddr_in*)sockaddr)->sin_addr;
 			current->winmtr=this;
 			current->ttl=hops+1;
+//			current->max_ping = DEFAULT_MAX_PING;
 			hThreads[hops]=(HANDLE)_beginthreadex(NULL,0,TraceThread,current,0,NULL);
 			Sleep(30);
 			if(++hops>this->GetMax()) break;
@@ -174,6 +188,9 @@ void WinMTRNet::DoTrace(sockaddr* sockaddr)
 	}
 	WaitForMultipleObjects(hops, hThreads, TRUE, INFINITE);
 	for(; hops;) CloseHandle(hThreads[--hops]);
+
+	freeaddrinfo(anfo);
+	tracing = false;
 }
 
 void WinMTRNet::StopTrace()
@@ -185,11 +202,11 @@ unsigned WINAPI TraceThread(void* p)
 {
 	trace_thread* current = (trace_thread*)p;
 	WinMTRNet* wmtrnet = current->winmtr;
-	TRACE_MSG("Thread with TTL=" << (int)current->ttl << " started.");
+	TRACE_MSG("Thread with TTL=%d started", current->ttl);
 	
 	IPINFO			stIPInfo, *lpstIPInfo;
 	char			achReqData[8192];
-	WORD			nDataLen = wmtrnet->wmtrdlg->pingsize;
+	WORD			nDataLen = wmtrnet->pingsize;
 	union {
 		ICMP_ECHO_REPLY icmp_echo_reply;
 		char achRepData[sizeof(ICMPECHO)+8192];
@@ -202,6 +219,7 @@ unsigned WINAPI TraceThread(void* p)
 	stIPInfo.OptionsSize	= 0;
 	stIPInfo.OptionsData	= NULL;
 	for(int i=0; i<nDataLen; ++i) achReqData[i]=32;//whitespaces
+//	for (size_t cycle = 0; wmtrnet->tracing && cycle < current->max_ping; cycle++) {
 	while(wmtrnet->tracing) {
 		// For some strange reason, ICMP API is not filling the TTL for icmp echo reply
 		// Check if the current thread should be closed
@@ -216,7 +234,7 @@ unsigned WINAPI TraceThread(void* p)
 		DWORD dwReplyCount = wmtrnet->lpfnIcmpSendEcho2(wmtrnet->hICMP, 0,NULL,NULL, current->address, achReqData, nDataLen, lpstIPInfo, achRepData, sizeof(achRepData), ECHO_REPLY_TIMEOUT);
 		wmtrnet->AddXmit(current->ttl - 1);
 		if(dwReplyCount) {
-			TRACE_MSG("TTL " << (int)current->ttl << " reply TTL " << (int)icmp_echo_reply.Options.Ttl << " Status " << icmp_echo_reply.Status << " Reply count " << dwReplyCount);
+			TRACE_MSG("TTL %d reply TTL %d Status %d Reply count %d", current->ttl, icmp_echo_reply.Options.Ttl, icmp_echo_reply.Status, dwReplyCount);
 			switch(icmp_echo_reply.Status) {
 			case IP_SUCCESS:
 			case IP_TTL_EXPIRED_TRANSIT:
@@ -227,19 +245,19 @@ unsigned WINAPI TraceThread(void* p)
 			default:
 				wmtrnet->SetErrorName(current->ttl - 1, icmp_echo_reply.Status);
 			}
-			if((DWORD)(wmtrnet->wmtrdlg->interval * 1000) > icmp_echo_reply.RoundTripTime)
-				Sleep((DWORD)(wmtrnet->wmtrdlg->interval * 1000) - icmp_echo_reply.RoundTripTime);
+			if((DWORD)(wmtrnet->interval * 1000) > icmp_echo_reply.RoundTripTime)
+				Sleep((DWORD)(wmtrnet->interval * 1000) - icmp_echo_reply.RoundTripTime);
 		} else {
 			DWORD err=GetLastError();
 			wmtrnet->SetErrorName(current->ttl - 1, err);
 			switch(err) {
 			case IP_REQ_TIMED_OUT: break;
 			default:
-				Sleep((DWORD)(wmtrnet->wmtrdlg->interval * 1000));
+				Sleep((DWORD)(wmtrnet->interval * 1000));
 			}
 		}
 	}//end loop
-	TRACE_MSG("Thread with TTL=" << (int)current->ttl << " stopped.");
+	TRACE_MSG("Thread with TTL=%d stopped.", current->ttl);
 	delete p;
 	return 0;
 }
@@ -249,11 +267,11 @@ unsigned WINAPI TraceThread6(void* p)
 	static sockaddr_in6 sockaddrfrom= {AF_INET6,0,0,in6addr_any,0};
 	trace_thread6* current = (trace_thread6*)p;
 	WinMTRNet* wmtrnet = current->winmtr;
-	TRACE_MSG("Thread with TTL=" << (int)current->ttl << " started.");
+	TRACE_MSG("Thread with TTL=%d started", current->ttl);
 	
 	IPINFO			stIPInfo, *lpstIPInfo;
 	char			achReqData[8192];
-	WORD			nDataLen = wmtrnet->wmtrdlg->pingsize;
+	WORD			nDataLen = wmtrnet->pingsize;
 	union {
 		ICMPV6_ECHO_REPLY icmpv6_echo_reply;
 		char achRepData[sizeof(PICMPV6_ECHO_REPLY) + 8192];
@@ -266,12 +284,13 @@ unsigned WINAPI TraceThread6(void* p)
 	stIPInfo.OptionsSize	= 0;
 	stIPInfo.OptionsData	= NULL;
 	for(int i=0; i<nDataLen; ++i) achReqData[i]=32;//whitespaces
+	//for (size_t cycle = 0; wmtrnet->tracing && cycle < current->max_ping; cycle++) {
 	while(wmtrnet->tracing) {
 		if(current->ttl > wmtrnet->GetMax()) break;
 		DWORD dwReplyCount = wmtrnet->lpfnIcmp6SendEcho2(wmtrnet->hICMP6, 0,NULL,NULL, &sockaddrfrom, &current->address, achReqData, nDataLen, lpstIPInfo, achRepData, sizeof(achRepData), ECHO_REPLY_TIMEOUT);
 		wmtrnet->AddXmit(current->ttl - 1);
 		if(dwReplyCount) {
-			TRACE_MSG("TTL " << (int)current->ttl << " Status " << icmpv6_echo_reply.Status << " Reply count " << dwReplyCount);
+			TRACE_MSG("TTL %d Status %d Reply count %d", current->ttl, icmpv6_echo_reply.Status, dwReplyCount);
 			switch(icmpv6_echo_reply.Status) {
 			case IP_SUCCESS:
 			case IP_TTL_EXPIRED_TRANSIT:
@@ -282,19 +301,19 @@ unsigned WINAPI TraceThread6(void* p)
 			default:
 				wmtrnet->SetErrorName(current->ttl - 1, icmpv6_echo_reply.Status);
 			}
-			if((DWORD)(wmtrnet->wmtrdlg->interval * 1000) > icmpv6_echo_reply.RoundTripTime)
-				Sleep((DWORD)(wmtrnet->wmtrdlg->interval * 1000) - icmpv6_echo_reply.RoundTripTime);
+			if((DWORD)(wmtrnet->interval * 1000) > icmpv6_echo_reply.RoundTripTime)
+				Sleep((DWORD)(wmtrnet->interval * 1000) - icmpv6_echo_reply.RoundTripTime);
 		} else {
 			DWORD err=GetLastError();
 			wmtrnet->SetErrorName(current->ttl - 1, err);
 			switch(err) {
 			case IP_REQ_TIMED_OUT: break;
 			default:
-				Sleep((DWORD)(wmtrnet->wmtrdlg->interval * 1000));
+				Sleep((DWORD)(wmtrnet->interval * 1000));
 			}
 		}
 	}//end loop
-	TRACE_MSG("Thread with TTL=" << (int)current->ttl << " stopped.");
+	TRACE_MSG("Thread with TTL=%d stopped.", current->ttl);
 	delete p;
 	return 0;
 }
@@ -392,13 +411,13 @@ void WinMTRNet::SetAddr(int at, u_long addr)
 {
 	WaitForSingleObject(ghMutex, INFINITE);
 	if(host[at].addr.sin_addr.s_addr==0) {
-		TRACE_MSG("Start DnsResolverThread for new address " << addr << ". Old addr value was " << host[at].addr.sin_addr.s_addr);
+		TRACE_MSG("Start DnsResolverThread for new address %lu. Old addr value was %lu", addr, host[at].addr.sin_addr.s_addr);
 		host[at].addr.sin_family=AF_INET;
 		host[at].addr.sin_addr.s_addr=addr;
 		dns_resolver_thread* dnt=new dns_resolver_thread;
 		dnt->index=at;
 		dnt->winmtr=this;
-		if(wmtrdlg->useDNS) _beginthread(DnsResolverThread, 0, dnt);
+		if(useDNS) _beginthread(DnsResolverThread, 0, dnt);
 		else DnsResolverThread(dnt);
 	}
 	ReleaseMutex(ghMutex);
@@ -408,13 +427,14 @@ void WinMTRNet::SetAddr6(int at, IPV6_ADDRESS_EX addrex)
 {
 	WaitForSingleObject(ghMutex, INFINITE);
 	if(!(host[at].addr6.sin6_addr.u.Word[0]|host[at].addr6.sin6_addr.u.Word[1]|host[at].addr6.sin6_addr.u.Word[2]|host[at].addr6.sin6_addr.u.Word[3]|host[at].addr6.sin6_addr.u.Word[4]|host[at].addr6.sin6_addr.u.Word[5]|host[at].addr6.sin6_addr.u.Word[6]|host[at].addr6.sin6_addr.u.Word[7])) {
-		TRACE_MSG("Start DnsResolverThread for new address " << addrex.sin6_addr[0] << ". Old addr value was " << host[at].addr6.sin6_addr.u.Word[0]);
+		TRACE_MSG("Start DnsResolverThread for new address %hu. Old addr value was %hu", addrex.sin6_addr[0], host[at].addr6.sin6_addr.u.Word[0]);
+
 		host[at].addr6.sin6_family=AF_INET6;
 		host[at].addr6.sin6_addr=*(in6_addr*)&addrex.sin6_addr;
 		dns_resolver_thread* dnt=new dns_resolver_thread;
 		dnt->index=at;
 		dnt->winmtr=this;
-		if(wmtrdlg->useDNS) _beginthread(DnsResolverThread,0,dnt);
+		if(useDNS) _beginthread(DnsResolverThread,0,dnt);
 		else DnsResolverThread(dnt);
 	}
 	ReleaseMutex(ghMutex);
@@ -468,7 +488,7 @@ void WinMTRNet::SetErrorName(int at, DWORD errnum)
 	case IP_GENERAL_FAILURE:
 		name="General failure."; break;
 	default:
-		TRACE_MSG("==UNKNOWN ERROR== " << errnum);
+		TRACE_MSG("==UNKNOWN ERROR== %lu", errnum);
 		name="Unknown error! (please report)"; break;
 	}
 	WaitForSingleObject(ghMutex, INFINITE);
@@ -511,7 +531,7 @@ void DnsResolverThread(void* p)
 	if(!getnameinfo(wn->GetAddr(dnt->index),sizeof(sockaddr_in6),hostname,NI_MAXHOST,NULL,0,NI_NUMERICHOST)) {
 		wn->SetName(dnt->index,hostname);
 	}
-	if(wn->wmtrdlg->useDNS) {
+	if(wn->useDNS) {
 		TRACE_MSG("DNS resolver thread started.");
 		if(!getnameinfo(wn->GetAddr(dnt->index),sizeof(sockaddr_in6),hostname,NI_MAXHOST,NULL,0,0)) {
 			wn->SetName(dnt->index,hostname);

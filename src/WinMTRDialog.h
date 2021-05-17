@@ -78,16 +78,12 @@ public:
 	STATES				state;
 	STATE_TRANSITIONS	transition;
 	HANDLE				traceThreadMutex;
-	double				interval;
 	bool				hasIntervalFromCmdLine;
-	WORD				pingsize;
 	bool				hasPingsizeFromCmdLine;
 	int					maxLRU;
 	bool				hasMaxLRUFromCmdLine;
 	int					nrLRU;
-	BOOL				useDNS;
 	bool				hasUseDNSFromCmdLine;
-	unsigned char		useIPv6;
 	bool				hasUseIPv6FromCmdLine;
 	WinMTRNet*			wmtrnet;
 	

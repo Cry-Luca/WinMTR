@@ -13,6 +13,7 @@
 #ifndef WINMTRNET_H_
 #define WINMTRNET_H_
 
+#include "WinMTRDefs.h"
 
 class WinMTRDialog;
 
@@ -59,9 +60,9 @@ class WinMTRNet
 	
 public:
 
-	WinMTRNet(WinMTRDialog* wp);
+	WinMTRNet();
 	~WinMTRNet();
-	void	DoTrace(sockaddr* sockaddr);
+	void	DoTrace(const char* hostname);
 	void	ResetHops();
 	void	StopTrace();
 	
@@ -84,12 +85,15 @@ public:
 	void	AddReturned(int at);
 	void	AddXmit(int at);
 	
-	WinMTRDialog*		wmtrdlg;
 	union {
 		in_addr last_remote_addr;
 		in6_addr last_remote_addr6;
 	};
+	WORD				pingsize;
+	double				interval;
+	BOOL				useDNS;
 	bool				hasIPv6;
+	unsigned char		useIPv6;
 	bool				tracing;
 	bool				initialized;
 	HANDLE				hICMP;

@@ -18,6 +18,7 @@ add_executable(WinMTR
 	"src/WinMTRProperties.cpp"
 	"src/WinMTRLicense.h"
 	"src/WinMTRStatusBar.h"
+	"src/WinMTRDefs.h"
 	"src/WinMTRDialog.h"
 	"src/WinMTRGlobal.h"
 	"src/WinMTRHelp.h"
@@ -34,7 +35,9 @@ target_compile_definitions(WinMTR PRIVATE
 )
 
 add_executable(WinMTR-Report
+	"src/WinMTRNet.cpp"
 	"src/WinMTRReport.cpp"
+	"src/WinMTRNet.h"
 )
 
 target_compile_definitions(WinMTR-Report PRIVATE

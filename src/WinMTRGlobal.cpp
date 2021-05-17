@@ -25,3 +25,25 @@ int gettimeofday(struct timeval* tv, struct timezone* / *tz* /)
    return 0;
 }// */
 
+void TRACE_MSG(const char* format, ...)
+{
+#ifdef _DEBUG
+	va_list args;
+	va_start(args, format);
+
+	const int buf_size = vsnprintf(nullptr, 0, format, args) + 2;
+	char* buffer = new char[buf_size];
+
+	vsnprintf_s(buffer, buf_size, _TRUNCATE, format, args);
+	strcat_s(buffer, buf_size, "\n");
+
+	OutputDebugString(buffer);
+
+	va_end(args);
+#endif
+}
+
+void NotifyError(const char* text)
+{
+	AfxMessageBox(text);
+}

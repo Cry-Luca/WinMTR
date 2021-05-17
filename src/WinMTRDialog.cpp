@@ -66,9 +66,6 @@ WinMTRDialog::WinMTRDialog(CWnd* pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 	m_autostart = 0;
-	useDNS = DEFAULT_DNS;
-	interval = DEFAULT_INTERVAL;
-	pingsize = DEFAULT_PING_SIZE;
 	maxLRU = DEFAULT_MAX_LRU;
 	nrLRU = 0;
 	
@@ -79,9 +76,8 @@ WinMTRDialog::WinMTRDialog(CWnd* pParent)
 	hasUseIPv6FromCmdLine = false;
 	
 	traceThreadMutex = CreateMutex(NULL, FALSE, NULL);
-	wmtrnet = new WinMTRNet(this);
+	wmtrnet = new WinMTRNet;
 	if(!wmtrnet->hasIPv6) m_checkIPv6.EnableWindow(FALSE);
-	useIPv6=2;
 }
 
 WinMTRDialog::~WinMTRDialog()
@@ -227,10 +223,10 @@ BOOL WinMTRDialog::InitRegistry()
 		return FALSE;
 		
 	if(RegQueryValueEx(hKey_v, "PingSize", 0, NULL, (unsigned char*)&tmp_dword, &value_size) != ERROR_SUCCESS) {
-		tmp_dword = pingsize;
+		tmp_dword = wmtrnet->pingsize;
 		RegSetValueEx(hKey_v,"PingSize", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
 	} else {
-		if(!hasPingsizeFromCmdLine) pingsize = (WORD)tmp_dword;
+		if(!hasPingsizeFromCmdLine) wmtrnet->pingsize = (WORD)tmp_dword;
 	}
 	
 	if(RegQueryValueEx(hKey_v, "MaxLRU", 0, NULL, (unsigned char*)&tmp_dword, &value_size) != ERROR_SUCCESS) {
@@ -241,25 +237,25 @@ BOOL WinMTRDialog::InitRegistry()
 	}
 	
 	if(RegQueryValueEx(hKey_v, "UseDNS", 0, NULL, (unsigned char*)&tmp_dword, &value_size) != ERROR_SUCCESS) {
-		tmp_dword = useDNS ? 1 : 0;
+		tmp_dword = wmtrnet->useDNS ? 1 : 0;
 		RegSetValueEx(hKey_v,"UseDNS", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
 	} else {
-		if(!hasUseDNSFromCmdLine) useDNS = (BOOL)tmp_dword;
+		if(!hasUseDNSFromCmdLine) wmtrnet->useDNS = (BOOL)tmp_dword;
 	}
 	if(RegQueryValueEx(hKey_v, "UseIPv6", 0, NULL, (unsigned char*)&tmp_dword, &value_size) != ERROR_SUCCESS) {
-		tmp_dword = useIPv6;
+		tmp_dword = wmtrnet->useIPv6;
 		RegSetValueEx(hKey_v,"UseIPv6", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
 	} else {
-		if(!hasUseIPv6FromCmdLine) useIPv6 = (unsigned char)tmp_dword;
-		if(useIPv6>2) useIPv6=1;
+		if(!hasUseIPv6FromCmdLine) wmtrnet->useIPv6 = (unsigned char)tmp_dword;
+		if(wmtrnet->useIPv6>2) wmtrnet->useIPv6=1;
 	}
-	m_checkIPv6.SetCheck(useIPv6);
+	m_checkIPv6.SetCheck(wmtrnet->useIPv6);
 	
 	if(RegQueryValueEx(hKey_v, "Interval", 0, NULL, (unsigned char*)&tmp_dword, &value_size) != ERROR_SUCCESS) {
-		tmp_dword = (DWORD)(interval * 1000);
+		tmp_dword = (DWORD)(wmtrnet->interval * 1000);
 		RegSetValueEx(hKey_v,"Interval", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
 	} else {
-		if(!hasIntervalFromCmdLine) interval = (float)tmp_dword / 1000.0;
+		if(!hasIntervalFromCmdLine) wmtrnet->interval = (float)tmp_dword / 1000.0;
 	}
 	
 	r = RegCreateKeyEx(hKey,"LRU",0,NULL,0,KEY_ALL_ACCESS,NULL,&hKey_v,NULL);
@@ -450,7 +446,7 @@ void WinMTRDialog::SetHostName(const char* host)
 //*****************************************************************************
 void WinMTRDialog::SetPingSize(WORD ps)
 {
-	pingsize = ps;
+	wmtrnet->pingsize = ps;
 }
 
 //*****************************************************************************
@@ -469,7 +465,7 @@ void WinMTRDialog::SetMaxLRU(int mlru)
 //*****************************************************************************
 void WinMTRDialog::SetInterval(float i)
 {
-	interval = i;
+	wmtrnet->interval = i;
 }
 
 //*****************************************************************************
@@ -478,7 +474,7 @@ void WinMTRDialog::SetInterval(float i)
 //*****************************************************************************
 void WinMTRDialog::SetUseDNS(BOOL udns)
 {
-	useDNS = udns;
+	wmtrnet->useDNS = udns;
 }
 
 
@@ -511,7 +507,7 @@ void WinMTRDialog::OnRestart()
 		HKEY hKey; DWORD tmp_dword;
 		if(RegCreateKeyEx(HKEY_CURRENT_USER,"Software\\WinMTR\\Config",0,NULL,0,KEY_ALL_ACCESS,NULL,&hKey,NULL)==ERROR_SUCCESS) {
 			tmp_dword=m_checkIPv6.GetCheck();
-			useIPv6=(unsigned char)tmp_dword;
+			wmtrnet->useIPv6=(unsigned char)tmp_dword;
 			RegSetValueEx(hKey,"UseIPv6",0,REG_DWORD,(const unsigned char*)&tmp_dword,sizeof(DWORD));
 			RegCloseKey(hKey);
 		}
@@ -543,25 +539,25 @@ void WinMTRDialog::OnRestart()
 //*****************************************************************************
 void WinMTRDialog::OnOptions()
 {
-	WinMTROptions optDlg(interval,pingsize,maxLRU,useDNS);
+	WinMTROptions optDlg(wmtrnet->interval, wmtrnet->pingsize,maxLRU, wmtrnet->useDNS);
 	if(IDOK == optDlg.DoModal()) {
 	
-		pingsize = (WORD)optDlg.GetPingSize();
-		interval = optDlg.GetInterval();
+		wmtrnet->pingsize = (WORD)optDlg.GetPingSize();
+		wmtrnet->interval = optDlg.GetInterval();
 		maxLRU = optDlg.GetMaxLRU();
-		useDNS = optDlg.GetUseDNS();
+		wmtrnet->useDNS = optDlg.GetUseDNS();
 		
 		HKEY hKey;
 		DWORD tmp_dword;
 		
 		if(RegCreateKeyEx(HKEY_CURRENT_USER,"Software\\WinMTR\\Config",0,NULL,0,KEY_ALL_ACCESS,NULL,&hKey,NULL)==ERROR_SUCCESS) {
-			tmp_dword = pingsize;
+			tmp_dword = wmtrnet->pingsize;
 			RegSetValueEx(hKey,"PingSize", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
 			tmp_dword = maxLRU;
 			RegSetValueEx(hKey,"MaxLRU", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
-			tmp_dword = useDNS ? 1 : 0;
+			tmp_dword = wmtrnet->useDNS ? 1 : 0;
 			RegSetValueEx(hKey,"UseDNS", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
-			tmp_dword = (DWORD)(interval * 1000);
+			tmp_dword = (DWORD)(wmtrnet->interval * 1000);
 			RegSetValueEx(hKey,"Interval", 0, REG_DWORD, (const unsigned char*)&tmp_dword, sizeof(DWORD));
 			RegCloseKey(hKey);
 		}
@@ -883,7 +879,7 @@ int WinMTRDialog::InitMTRNet()
 	addrinfo nfofilter= {0};
 	addrinfo* anfo;
 	if(wmtrnet->hasIPv6) {
-		switch(useIPv6) {
+		switch(wmtrnet->useIPv6) {
 		case 0:
 			nfofilter.ai_family=AF_INET; break;
 		case 1:
@@ -917,27 +913,7 @@ void PingThread(void* p)
 	char hostname[255];
 	wmtrdlg->m_comboHost.GetWindowText(hostname, 255);
 	
-	addrinfo nfofilter= {0};
-	addrinfo* anfo;
-	if(wmtrdlg->wmtrnet->hasIPv6) {
-		switch(wmtrdlg->useIPv6) {
-		case 0:
-			nfofilter.ai_family=AF_INET; break;
-		case 1:
-			nfofilter.ai_family=AF_INET6; break;
-		default:
-			nfofilter.ai_family=AF_UNSPEC;
-		}
-	}
-	nfofilter.ai_socktype=SOCK_RAW;
-	nfofilter.ai_flags=AI_NUMERICSERV|AI_ADDRCONFIG;//|AI_V4MAPPED;
-	if(getaddrinfo(hostname,NULL,&nfofilter,&anfo)||!anfo) { //we use first address returned
-		AfxMessageBox("Unable to resolve hostname. (again)");
-		ReleaseMutex(wmtrdlg->traceThreadMutex);
-		return;
-	}
-	wmtrdlg->wmtrnet->DoTrace(anfo->ai_addr);
-	freeaddrinfo(anfo);
+	wmtrdlg->wmtrnet->DoTrace(hostname);
 	ReleaseMutex(wmtrdlg->traceThreadMutex);
 }
 
@@ -989,6 +965,7 @@ void WinMTRDialog::Transit(STATES new_state)
 	case IDLE:
 		switch(state) {
 		case STOPPING:
+//		case TRACING: // From OnTimer() if traceThreadMutex is no longer locked
 			transition = STOPPING_TO_IDLE;
 			break;
 		case IDLE:

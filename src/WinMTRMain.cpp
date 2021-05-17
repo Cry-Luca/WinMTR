@@ -124,11 +124,11 @@ void WinMTRMain::ParseCommandLineParams(LPTSTR cmd, WinMTRDialog* wmtrdlg)
 	}
 	if(GetParamValue(cmd, "ipv6",'6', NULL)) {
 		wmtrdlg->hasUseIPv6FromCmdLine=true;
-		wmtrdlg->useIPv6=1;
+		wmtrdlg->wmtrnet->useIPv6=1;
 	}
 	if(GetParamValue(cmd, "ipv4",'4', NULL)) {
 		wmtrdlg->hasUseIPv6FromCmdLine=true;
-		wmtrdlg->useIPv6=0;
+		wmtrdlg->wmtrnet->useIPv6=0;
 	}
 }
 
