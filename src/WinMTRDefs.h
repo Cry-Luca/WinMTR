@@ -18,7 +18,7 @@
 #define DEFAULT_INTERVAL	1.0
 #define DEFAULT_MAX_LRU		128
 #define DEFAULT_DNS			TRUE
-//#define DEFAULT_MAX_PING	10
+#define DEFAULT_MAX_PING	10
 
 #define SAVED_PINGS 100
 #define MaxHost 256

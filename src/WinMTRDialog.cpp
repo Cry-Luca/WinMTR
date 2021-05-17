@@ -965,7 +965,7 @@ void WinMTRDialog::Transit(STATES new_state)
 	case IDLE:
 		switch(state) {
 		case STOPPING:
-//		case TRACING: // From OnTimer() if traceThreadMutex is no longer locked
+		case TRACING: // From OnTimer() if traceThreadMutex is no longer locked
 			transition = STOPPING_TO_IDLE;
 			break;
 		case IDLE:

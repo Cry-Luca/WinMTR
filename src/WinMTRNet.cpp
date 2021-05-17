@@ -11,13 +11,13 @@ struct trace_thread {
 	WinMTRNet*	winmtr;
 	in_addr		address;
 	int			ttl;
-//	int			max_ping; // equivalent to mtr's '-c, --report-cycles COUNT' (the number of pings sent)
+	int			max_ping; // equivalent to mtr's '-c, --report-cycles COUNT' (the number of pings sent)
 };
 struct trace_thread6 {
 	WinMTRNet*		winmtr;
 	sockaddr_in6	address;
 	int				ttl;
-//	int				max_ping; // equivalent to mtr's '-c, --report-cycles COUNT' (the number of pings sent)
+	int				max_ping; // equivalent to mtr's '-c, --report-cycles COUNT' (the number of pings sent)
 };
 
 struct dns_resolver_thread {
@@ -167,7 +167,7 @@ void WinMTRNet::DoTrace(const char* hostname)
 			current->address=*(sockaddr_in6*)sockaddr;
 			current->winmtr=this;
 			current->ttl=hops+1;
-//			current->max_ping = DEFAULT_MAX_PING;
+			current->max_ping = DEFAULT_MAX_PING;
 			hThreads[hops]=(HANDLE)_beginthreadex(NULL,0,TraceThread6,current,0,NULL);
 			Sleep(30);
 			if(++hops>this->GetMax()) break;
@@ -180,7 +180,7 @@ void WinMTRNet::DoTrace(const char* hostname)
 			current->address=((sockaddr_in*)sockaddr)->sin_addr;
 			current->winmtr=this;
 			current->ttl=hops+1;
-//			current->max_ping = DEFAULT_MAX_PING;
+			current->max_ping = DEFAULT_MAX_PING;
 			hThreads[hops]=(HANDLE)_beginthreadex(NULL,0,TraceThread,current,0,NULL);
 			Sleep(30);
 			if(++hops>this->GetMax()) break;
@@ -219,8 +219,7 @@ unsigned WINAPI TraceThread(void* p)
 	stIPInfo.OptionsSize	= 0;
 	stIPInfo.OptionsData	= NULL;
 	for(int i=0; i<nDataLen; ++i) achReqData[i]=32;//whitespaces
-//	for (size_t cycle = 0; wmtrnet->tracing && cycle < current->max_ping; cycle++) {
-	while(wmtrnet->tracing) {
+	for (size_t cycle = 0; wmtrnet->tracing && cycle < current->max_ping; cycle++) {
 		// For some strange reason, ICMP API is not filling the TTL for icmp echo reply
 		// Check if the current thread should be closed
 		if(current->ttl > wmtrnet->GetMax()) break;
@@ -284,8 +283,7 @@ unsigned WINAPI TraceThread6(void* p)
 	stIPInfo.OptionsSize	= 0;
 	stIPInfo.OptionsData	= NULL;
 	for(int i=0; i<nDataLen; ++i) achReqData[i]=32;//whitespaces
-	//for (size_t cycle = 0; wmtrnet->tracing && cycle < current->max_ping; cycle++) {
-	while(wmtrnet->tracing) {
+	for (size_t cycle = 0; wmtrnet->tracing && cycle < current->max_ping; cycle++) {
 		if(current->ttl > wmtrnet->GetMax()) break;
 		DWORD dwReplyCount = wmtrnet->lpfnIcmp6SendEcho2(wmtrnet->hICMP6, 0,NULL,NULL, &sockaddrfrom, &current->address, achReqData, nDataLen, lpstIPInfo, achRepData, sizeof(achRepData), ECHO_REPLY_TIMEOUT);
 		wmtrnet->AddXmit(current->ttl - 1);
