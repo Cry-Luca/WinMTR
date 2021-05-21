@@ -15,6 +15,7 @@
 # VS project (user specific settings)
 *.vcxproj.user
 
+/bin/
 /build/
 /src/.vs/
 src/Release/

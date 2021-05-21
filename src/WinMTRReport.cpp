@@ -47,6 +47,7 @@
 #include <cstdarg>
 #include <functional>
 #include <ctime>
+#include <memory>
 
 //
 //void ErrorMsg()
@@ -77,10 +78,7 @@
 //	LocalFree(lpDisplayBuf);
 //}
 
-#ifndef NDEBUG
-const char* test_hostname = "capi1-lv-lw-wc.huntshowdown.com";
-const char* localhost = "FRWP1LUCA";
-#endif
+bool verbose = false;
 
 constexpr int RET_FAIL = EXIT_FAILURE;
 constexpr int RET_OK = EXIT_SUCCESS;
@@ -92,11 +90,16 @@ void NotifyError(const char* text)
 
 void TRACE_MSG(const char* format, ...)
 {
-	va_list args;
-	va_start(args, format);
-	vfprintf(stdout, format, args);
-	fprintf(stdout, "\n");
-	va_end(args);
+#ifdef NDEBUG
+	if (verbose)
+#endif
+	{
+		va_list args;
+		va_start(args, format);
+		vfprintf(stdout, format, args);
+		fprintf(stdout, "\n");
+		va_end(args);
+	}
 }
 
 void Log(const char* format, ...)
@@ -158,9 +161,14 @@ void report_close(WinMTRNet* winmtr)
 	constexpr size_t MAX_FORMAT_STR = 81;
 
 	char name[sizeof(s_nethost::name)];
+	// If a buffer of 256 bytes is passed in the name parameter and the namelen parameter is set to 256, the buffer size will always be adequate
+	// (https://docs.microsoft.com/en-us/windows/win32/api/winsock/nf-winsock-gethostname)
+	char localhost[256];
 	char buf[1024];
 	char fmt[16];
 	const size_t host_count = winmtr->GetMax();
+
+	gethostname(localhost, sizeof(localhost));
 
 	size_t len_hosts = strlen(localhost);
 
@@ -222,13 +230,79 @@ void report_close(WinMTRNet* winmtr)
 //~ (Modified) mtr 0.94 code
 //
 
+void Usage()
+{
+	Log("\nUsage:");
+	Log(" WinMTR-Report [options] hostname\n");
+	Log(" -c, --report-cycles COUNT  set the number of pings sent");
+	Log(" -v, --verbose              print verbose output");
+	Log(" -h, --help                 display this help and exit");
+}
+
 int main(int argc, char* argv[])
 {
+	s_trace trace;
+	trace.hostname = nullptr;
+	trace.max_ping = 10;
+
+	for (int ai = 1; ai < argc;)
+	{
+		const char* opt = argv[ai];
+		if (strcmp("-c", opt) == 0 || strcmp("--report-cycles", opt) == 0)
+		{
+			if ((ai + 1) < argc)
+			{
+				trace.max_ping = atoi(argv[ai + 1]);
+				ai += 2;
+			}
+			else
+			{
+				NotifyError("No value supplied to -c/--report-cycles option.");
+				Usage();
+				return RET_FAIL;
+			}
+			
+		}
+		else if (strcmp("-v", opt) == 0 || strcmp("--verbose", opt) == 0)
+		{
+			verbose = true;
+			ai++;
+		}
+		else if (strcmp("-h", opt) == 0 || strcmp("--help", opt) == 0)
+		{
+			Usage();
+			return RET_OK;
+		}
+		else if((ai + 1) == argc)
+		{
+			trace.hostname = argv[ai];
+			ai++;
+		}
+		else
+		{
+			NotifyError("Unexpected arguments.");
+			Usage();
+			return RET_FAIL;
+		}
+	}
+
+	if (trace.hostname == nullptr || strlen(trace.hostname) == 0)
+	{
+		NotifyError("No hostname provided. Unable to proceed.");
+		Usage();
+		return RET_FAIL;
+	}
+
+	TRACE_MSG("Starting trace with hostname='%s' max_ping=%d", trace.hostname, trace.max_ping);
+
 	report_open();
 
-	WinMTRNet wmtr;
-	wmtr.DoTrace(test_hostname); // TODO: Options (e.g. verbose logging, cycles)
-	report_close(&wmtr);
+	std::unique_ptr<WinMTRNet> wmtr = std::make_unique<WinMTRNet>();
+	wmtr->DoTrace(trace);
+
+	report_close(wmtr.get());
+
+	wmtr.reset();
 
 	return RET_OK;
 }

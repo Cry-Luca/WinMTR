@@ -913,7 +913,9 @@ void PingThread(void* p)
 	char hostname[255];
 	wmtrdlg->m_comboHost.GetWindowText(hostname, 255);
 	
-	wmtrdlg->wmtrnet->DoTrace(hostname);
+	s_trace trace;
+	trace.hostname = hostname;
+	wmtrdlg->wmtrnet->DoTrace(trace);
 	ReleaseMutex(wmtrdlg->traceThreadMutex);
 }
 

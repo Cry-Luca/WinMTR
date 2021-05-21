@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.12.4)
 
+set(CMAKE_CONFIGURATION_TYPES Debug Release)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
+
 project(WinMTR LANGUAGES CXX)
 
 add_executable(WinMTR 
@@ -35,14 +38,15 @@ target_compile_definitions(WinMTR PRIVATE
 )
 
 add_executable(WinMTR-Report
+	"src/Resource.h"
+	"src/WinMTR.ico"
+	"src/WinMTR.rc"
 	"src/WinMTRNet.cpp"
 	"src/WinMTRReport.cpp"
 	"src/WinMTRNet.h"
 )
 
-target_compile_definitions(WinMTR-Report PRIVATE
-	NOMINMAX
-)
+target_compile_definitions(WinMTR-Report PRIVATE NOMINMAX)
 
 target_compile_options(WinMTR-Report PRIVATE /W4)
 
