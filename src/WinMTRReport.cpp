@@ -23,7 +23,7 @@
 /*
 	WinMTR Redux, extended fork of Appnor's WinMTR with IPv6 support and other enhancements
 	Copyright (C) 2010-2010 Appnor MSP S.A. - http://www.appnor.com
-	Copyright (C) 2014 René Schümann
+	Copyright (C) 2014 RenÃ© SchÃ¼mann
 
 	This program is free software; you can redistribute it and/or modify
 	it under the terms of the GNU General Public License as published by
@@ -48,37 +48,12 @@
 #include <functional>
 #include <ctime>
 #include <memory>
+#include <clocale>
 
-//
-//void ErrorMsg()
-//{
-//	const DWORD dw = GetLastError();
-//
-//	LPVOID lpMsgBuf = NULL;
-//
-//	FormatMessage(
-//		FORMAT_MESSAGE_ALLOCATE_BUFFER |
-//		FORMAT_MESSAGE_FROM_SYSTEM |
-//		FORMAT_MESSAGE_IGNORE_INSERTS,
-//		NULL,
-//		dw,
-//		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-//		(LPTSTR)&lpMsgBuf,
-//		0, NULL);
-//
-//	// Display the error message and exit the process
-//
-//	TCHAR* lpDisplayBuf = (TCHAR*)LocalAlloc(LMEM_ZEROINIT, (lstrlen((LPCTSTR)lpMsgBuf) + 40) * sizeof(TCHAR));
-//
-//	sprintf(lpDisplayBuf, "Failed with error %d: %s", dw, lpMsgBuf);
-//
-//	MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
-//
-//	LocalFree(lpMsgBuf);
-//	LocalFree(lpDisplayBuf);
-//}
+#include <mbctype.h>
 
 bool verbose = false;
+bool reportwide = false;
 
 constexpr int RET_FAIL = EXIT_FAILURE;
 constexpr int RET_OK = EXIT_SUCCESS;
@@ -170,21 +145,26 @@ void report_close(WinMTRNet* winmtr)
 
 	gethostname(localhost, sizeof(localhost));
 
-	size_t len_hosts = strlen(localhost);
+	size_t len_hosts = 33;
 
-	for (size_t hi = 0; hi < host_count; ++hi)
+	if (reportwide)
 	{
-		winmtr->GetName(static_cast<int>(hi), name);
-		const size_t nlen = strlen(name);
+		len_hosts = strlen(localhost);
 
-		if (nlen > len_hosts)
-			len_hosts = nlen;
+		for (size_t hi = 0; hi < host_count; ++hi)
+		{
+			winmtr->GetName(static_cast<int>(hi), name);
+			const size_t nlen = strlen(name);
+
+			if (nlen > len_hosts)
+				len_hosts = nlen;
+		}
 	}
 
 	snprintf(fmt, sizeof(fmt), "HOST: %%-%zus", len_hosts);
 	snprintf(buf, sizeof(buf), fmt, localhost);
 	
-	size_t len = strlen(buf);
+	size_t len = reportwide ? strlen(buf) : len_hosts;
 	
 	for (size_t i = 0; i < MAXFLD; i++) 
 	{
@@ -200,7 +180,7 @@ void report_close(WinMTRNet* winmtr)
 		snprintf(fmt, sizeof(fmt), " %%2d.|-- %%-%zus", len_hosts);
 		winmtr->GetName(static_cast<int>(hi), name);
 		snprintf(buf, sizeof(buf), fmt, hi + 1, name);
-		len = strlen(buf);
+		len = reportwide ? strlen(buf) : len_hosts;
 		for (size_t i = 0; i < MAXFLD; i++) 
 		{
 			if (data_fields[i].net_xxx)
@@ -234,16 +214,25 @@ void Usage()
 {
 	Log("\nUsage:");
 	Log(" WinMTR-Report [options] hostname\n");
+	Log(" -w, --report-wide          output wide report");
 	Log(" -c, --report-cycles COUNT  set the number of pings sent");
+	Log(" -n, --no-dns               do not resolve host names");
 	Log(" -v, --verbose              print verbose output");
 	Log(" -h, --help                 display this help and exit");
 }
 
 int main(int argc, char* argv[])
 {
+	// Make sure locale specific characters are not given any special interpretation.
+	// We want the output to be as plain text as possible to not get surprises when reading from pipes.
+	std::setlocale(LC_ALL, "C");
+	_setmbcp(_MB_CP_LOCALE);
+
 	s_trace trace;
 	trace.hostname = nullptr;
 	trace.max_ping = 10;
+
+	bool useDNS = true;
 
 	for (int ai = 1; ai < argc;)
 	{
@@ -266,6 +255,16 @@ int main(int argc, char* argv[])
 		else if (strcmp("-v", opt) == 0 || strcmp("--verbose", opt) == 0)
 		{
 			verbose = true;
+			ai++;
+		}
+		else if (strcmp("-n", opt) == 0 || strcmp("--no-dns", opt) == 0)
+		{
+			useDNS = false;
+			ai++;
+		}
+		else if (strcmp("-w", opt) == 0 || strcmp("--report-wide", opt) == 0)
+		{
+			reportwide = true;
 			ai++;
 		}
 		else if (strcmp("-h", opt) == 0 || strcmp("--help", opt) == 0)
@@ -298,6 +297,7 @@ int main(int argc, char* argv[])
 	report_open();
 
 	std::unique_ptr<WinMTRNet> wmtr = std::make_unique<WinMTRNet>();
+	wmtr->useDNS = useDNS ? TRUE : FALSE;
 	wmtr->DoTrace(trace);
 
 	report_close(wmtr.get());
